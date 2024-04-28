@@ -1,9 +1,8 @@
-use async_graphql_parser::types::OperationDefinition;
-use async_graphql_parser::types::Selection;
-use async_graphql_parser::Positioned;
-use async_graphql_value::Name;
-use async_graphql_value::Value;
+use async_graphql_parser::types::{OperationDefinition, Selection};
+use async_graphql_value::{Name, Value, indexmap};
 use error_codes::*;
+use indexmap::IndexMap;
+
 mod error_codes;
 
 pub fn resolve_op_value(
@@ -20,7 +19,7 @@ pub fn resolve_op_value(
     }
 
     let levels: Vec<String> = name.split(".").map(|s| s.to_string()).collect();
-    println!("levels: {:?}", levels);
+    // println!("levels: {:?}", levels);
 
     let resolution_target = levels.last().unwrap();
     let mut substitution = None;
@@ -35,36 +34,81 @@ pub fn resolve_op_value(
     }
 
     let selection_set = operation.selection_set.clone().into_inner().items;
+    let mut placeholder_value = String::default();
     for selection in selection_set {
         let selection = selection.node;
         match selection {
             Selection::Field(field) => {
                 let field_args = field.node.clone().arguments;
 
-                let placeholder_value = get_placeholder_value(&field_args, levels.clone());
+                let args: Vec<(Name, Value)> = field_args
+                .iter()
+                .map(|(a,b)| {
+                    let x = a.node.clone();
+                    let y = b.node.clone();
+                    (x,y)
+                })
+                .clone()
+                .collect();
+
+                let mut fields_map: IndexMap<Name, Value> = IndexMap::new();
+                for (name, value) in args.iter() {
+                    fields_map.insert(name.clone(), value.clone());
+                }
+
+                let placeholder_prev_value = get_placeholder_value(&fields_map, &mut levels.clone());
+                if let Ok(value) = placeholder_prev_value {
+                    placeholder_value = value;
+                } else {
+                    return Err(NAME_NOT_FOUND);
+                }
             }
             _ => {}
         }
     }
 
-    Ok((String::from("xyz"), substitution.unwrap().to_string()))
+    Ok((placeholder_value, substitution.unwrap().to_string()))
 }
 
 fn get_placeholder_value(
-    field_args: &Vec<(Positioned<Name>, Positioned<Value>)>,
-    levels: Vec<String>,
+    field_map: &IndexMap<Name, Value>,
+    levels: &mut Vec<String>,
 ) -> Result<String, u8> {
-    for x in field_args.iter() {
-        let value = x.1.node.clone();
-        match value {
-            Value::Boolean(x) => {}
-            _ => {}
-        };
-        println!("x {:?} {:?}", x.0.node.as_str(), x.1.node);
+    let next_level = levels.iter().next().unwrap().clone();
+    levels.remove(0);
+
+    for (name, value) in field_map.iter() {
+        if name.to_string() == next_level {
+            // println!("levels.len() {}", levels.len());
+            if levels.len() == 0 {
+                match value.clone() {
+                    Value::Variable(name) => {
+                        // println!("name: {:?}", name.as_str());
+                        return Ok(String::from(name.as_str()));
+                    },
+                    _ => {}
+                }    
+            } else {
+                // println!("name {}", name.as_str());
+                match value.clone() {
+                    Value::Object(obj) => {
+                        // println!("obj: {:?}", obj);
+                        let fields_map = obj;
+                        if let Ok(placeholder) = get_placeholder_value(&fields_map, levels) {
+                            return Ok(placeholder);
+                        } else {
+                            return Err(NAME_NOT_FOUND);
+                        }
+                        // return Ok(get_placeholder_value(&fields_map, levels).unwrap());
+                    },
+                    _ => {}
+                }
+            }
+        } 
     }
-    Ok(String::from("$abc"))
+    return Err(NAME_NOT_FOUND);
 }
 
 pub fn error_code_message(error_code: u8) -> String {
-    format!("error_code {}", error_code)
+    format!("error_code: {}", error_code)
 }

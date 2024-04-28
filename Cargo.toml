@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 resolver = {path = "resolver/"}
 async-graphql-parser = "7.0.3"
-graphql-parser = "0.4.0"
 
 [workspace]
 members = ["resolver"]
