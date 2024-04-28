@@ -1,0 +1,13 @@
+mutation {
+  updatePetWithDetail(
+    petId: 1
+    details: {
+      age: $age
+      weight: 13
+      band: "AC/DC"
+      more: { gender: $gender, even_more: { city: $big_city } }
+    }
+    hungry: true
+    name: "Honolulu"
+  )
+}
